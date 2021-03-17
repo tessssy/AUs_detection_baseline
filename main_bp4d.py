@@ -13,7 +13,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 warnings.filterwarnings("ignore")
 
-writer1=SummaryWriter('runs_10')
+writer1=SummaryWriter('runs_11')
 
 # ----------------------------------------------------------
 # train on BP4D
@@ -65,8 +65,8 @@ def train(epoch):
         if (Not_nan == 0):
             print("This batch contains no AUs")
         else:
-            avg_acc = Sum / Not_nan
-            print(str(batch_idx) + 'avg:{:.6f}|loss:{:.6f}'.format(avg_acc, loss.item()))
+            # avg_acc = Sum / Not_nan
+            # print(str(batch_idx) + 'avg:{:.6f}|loss:{:.6f}'.format(avg_acc, loss.item()))
             for i in range(len(au_keys)):
                 acc_in_epoch[i] = pred[i] + acc_in_epoch[i]
                 total_in_epoch[i] = total[i] + total_in_epoch[i]
@@ -123,8 +123,8 @@ def test(epoch):
         if(Not_nan==0):
             print("This frame contains no AUs")             #里面有些数据没有标签 是否要去掉
         else:
-            avg_acc = Sum / Not_nan  #一个batch的平均准确率
-            print(str(batch_idx) + 'avg:{:.6f}|loss:{:.6f}'.format(avg_acc, loss.item()))
+            # avg_acc = Sum / Not_nan  #一个batch的平均准确率
+            # print(str(batch_idx) + 'avg:{:.6f}|loss:{:.6f}'.format(avg_acc, loss.item()))
             for i in range(len(au_keys)):
                 acc_in_epoch[i]=pred[i]+acc_in_epoch[i]     #整个验证集叠加的AU准确率
                 if (total[i]!=0):

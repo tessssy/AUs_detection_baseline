@@ -45,7 +45,13 @@ class ResNet34(nn.Module):  # 224x224x3
         self.layer4 = self.make_layer(256, 512, 3, stride=2)  # 7x7x512
         # 分类用的全连接
         self.fc = nn.Linear(512, num_classes)
-        self.bn = nn.BatchNorm1d(49).to('cuda:1')
+        #LSTM
+        self.lstm_list = []
+        for i in range(num_classes):
+            self.lstm = nn.LSTM(512, 49, 1, dropout=0.2).to('cuda:1')
+            self.lstm_list.append(self.lstm)
+
+
 
     def make_layer(self, in_ch, out_ch, block_num, stride=1):
         # 当维度增加时，对shortcut进行option B的处理
@@ -82,13 +88,9 @@ class ResNet34(nn.Module):  # 224x224x3
         # nn.init.xavier_normal_(c0,gain=20)
         out=torch.zeros([input.shape[1],12]).to('cuda:1')
         for i in range(12):
-            rnn = nn.LSTM(512, 49, 1,dropout=0.2)
-            rnn.to('cuda:1')
-            output,(hn,cn)=rnn(input)
-            hn=hn.transpose(1,2)
-            hn=self.bn(hn)
-#            hn=hn.mean(1)#128x1
-            out[:,i]=torch.add(out[:,i],hn[:,-1,:])
+            output,(hn,cn)=self.lstm_list[i](input)
+            hn=hn.mean(2)#128x1
+            out[:,i]=torch.add(out[:,i],hn)
         # x = F.avg_pool2d(x, 7)  # 1x1x512
         # x = x.view(x.size(0), -1)  # 将输出拉伸为一行：1x512
         # x = self.fc(x)  # 1x1     这里也截取一下
