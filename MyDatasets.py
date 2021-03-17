@@ -114,7 +114,7 @@ def get_test(seq, ratio=0.2):
     train, test = seq[offset:], seq[:offset]
     return train, test
 
-def get_train_val(seq, num_fold=5, fold=0):                  # cross_validation ? 验证集的前几个可能有空值了
+def get_train_val(seq, num_fold=6, fold=0):                  # cross_validation ? 验证集的前几个可能有空值了
     # 划分train和validation
     split = len(seq) // num_fold
 

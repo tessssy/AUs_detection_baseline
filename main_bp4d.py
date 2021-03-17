@@ -2,15 +2,18 @@ from torch.utils.data import  DataLoader
 import torch.optim as optim
 from tqdm import tqdm
 from myResnet import *
-from sklearn.metrics import f1_score
+#from sklearn.metrics import f1_score
 from MyDatasets import *
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 import torch.nn.functional as F
 from torchvision import transforms
-import numpy as np
+#import numpy as np
 import warnings
+from torch.utils.tensorboard import SummaryWriter
+
 warnings.filterwarnings("ignore")
 
+writer1=SummaryWriter('runs_10')
 
 # ----------------------------------------------------------
 # train on BP4D
@@ -18,6 +21,7 @@ warnings.filterwarnings("ignore")
 # Training
 def train(epoch):
     print('\nEpoch: %d' % epoch)
+    # net.module
     net.train()
     au_keys = ['au1', 'au2', 'au4', 'au6', 'au7', 'au10', 'au12', 'au14', 'au15', 'au17', 'au23', 'au24']
     train_loss = 0
@@ -53,16 +57,16 @@ def train(epoch):
                 acc = pred[i] / total[i]
                 total_acc.append(acc)
             else:
-                acc=0
+                acc=0.5
                 total_acc.append(acc)
             if (total_acc[i]!=0):
                 Sum = total_acc[i] + Sum
                 Not_nan = Not_nan + 1
         if (Not_nan == 0):
-            print("This frame contains no AUs")
+            print("This batch contains no AUs")
         else:
- #           avg_acc = Sum / Not_nan
-#            print(str(batch_idx) + 'avg:{:.6f}|loss:{:.6f}'.format(avg_acc.item(), loss.item()))
+            avg_acc = Sum / Not_nan
+            print(str(batch_idx) + 'avg:{:.6f}|loss:{:.6f}'.format(avg_acc, loss.item()))
             for i in range(len(au_keys)):
                 acc_in_epoch[i] = pred[i] + acc_in_epoch[i]
                 total_in_epoch[i] = total[i] + total_in_epoch[i]
@@ -111,16 +115,16 @@ def test(epoch):
                 acc = pred[i] / total[i]
                 total_acc.append(acc)
             else:
-                acc=0
+                acc=0.5
                 total_acc.append(acc)
             if(total_acc[i]!=0):
                 Sum=total_acc[i]+Sum
                 Not_nan=Not_nan+1
         if(Not_nan==0):
-            print("This frame contains no AUs")
+            print("This frame contains no AUs")             #里面有些数据没有标签 是否要去掉
         else:
-#            avg_acc = Sum / Not_nan  #一个batch的平均准确率
-#            print(str(batch_idx) + 'avg:{:.6f}|loss:{:.6f}'.format(avg_acc.item(), loss.item()))
+            avg_acc = Sum / Not_nan  #一个batch的平均准确率
+            print(str(batch_idx) + 'avg:{:.6f}|loss:{:.6f}'.format(avg_acc, loss.item()))
             for i in range(len(au_keys)):
                 acc_in_epoch[i]=pred[i]+acc_in_epoch[i]     #整个验证集叠加的AU准确率
                 if (total[i]!=0):
@@ -146,19 +150,21 @@ train_seq, val_seq = get_train_val(sequences)   #MyDatasets.get_train_val()
 
 if torch.cuda.is_available():
     deviceidx = [0, 1]
-    device='cuda:0'
+    device='cuda:1'
 else:
     device='cpu'
 
 yes_no = input("Is this the first time running(yes/no):")
 print('==> Preparing data...')
-transform_train = transforms.Compose([      #图片预处理
+transform_train = transforms.Compose([      #图片预处理  模型pretrained
     transforms.RandomCrop(224),
     transforms.RandomHorizontalFlip(),
     transforms.ToTensor(),
     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
 ])
 transform_val = transforms.Compose([
+    transforms.CenterCrop(224),
+    # transforms.RandomHorizontalFlip(),
     transforms.ToTensor(),
     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
 ])
@@ -167,29 +173,27 @@ trainset = MyBP4D(train_seq, train=True, transform=transform_train)
 trainloader = DataLoader(trainset, batch_size=128, shuffle=True, num_workers=0)
 
 valset = MyBP4D(val_seq, train=False, transform=transform_val)
-valloader = DataLoader(valset, batch_size=128, shuffle=False, num_workers=0)
+valloader = DataLoader(valset, batch_size=128, shuffle=True, num_workers=0)
 
 #Model
 print("start the net")
-#net = resnet_18_pre(12)
-#net = resnet_101_pre(12)
-# net = MobileNet_pre(12)
-net = mobilenet_test(12)
-if torch.cuda.device_count() > 1:  # 查看当前电脑的可用的gpu的数量，若gpu数量>1,就多gpu训练
-    net = torch.nn.DataParallel(net,deviceidx)    #多gpu训练,自动选择gpu
+net = ResNet34(12)
+#if torch.cuda.device_count() > 1:  # 查看当前电脑的可用的gpu的数量，若gpu数量>1,就多gpu训练
+#     net = torch.nn.DataParallel(net,deviceidx)    #多gpu训练,自动选择gpu
 net.to(device)
 
 
-train_lr = 0.0025
+train_lr = 0.001
 optimizer = optim.SGD(net.parameters(), lr=train_lr, momentum=0.9, weight_decay=5e-4)
+#optimizer = optim.Adam(net.parameters(), lr=train_lr)
 print('the learning rate is ', train_lr)
 
 start_epoch = 0  # start from epoch 0 or last checkpoint epoch
-num_epoch = 200
-train_loss = []
-test_loss = []
-train_acc = []
-test_acc = []
+num_epoch =200
+# train_loss = []
+# test_loss = []
+# train_acc = []
+# test_acc = []
 #断点重传
 if(yes_no=="no"):
     start_epoch = -1
@@ -200,25 +204,29 @@ if(yes_no=="no"):
     net.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     start_epoch = checkpoint['epoch']
-    train_loss = checkpoint['train_loss']
-    test_loss = checkpoint['test_loss']
-    train_acc = checkpoint['train_acc']
-    test_acc = checkpoint['test_acc']
+    # train_loss = checkpoint['train_loss']
+    # test_loss = checkpoint['test_loss']
+    # train_acc = checkpoint['train_acc']
+    # test_acc = checkpoint['test_acc']
     print("start_epoch:", start_epoch)
     print('-----------------------------')
     for epoch in range(start_epoch + 1, num_epoch):
         tra_loss,tra_acc = train(epoch)
         tes_loss,tes_acc = test(epoch)
-        train_loss.append(tra_loss)
-        test_loss.append(tes_loss)
-        train_acc.append(tra_acc)
-        test_acc.append(tes_acc)
+        writer1.add_scalar('train_loss', tra_loss, global_step=epoch)
+        writer1.add_scalar('train_acc', tra_acc, global_step=epoch)
+        writer1.add_scalar('test_loss', tes_loss, global_step=epoch)
+        writer1.add_scalar('test_acc', tes_acc, global_step=epoch)
+        # train_loss.append(tra_loss)
+        # test_loss.append(tes_loss)
+        # train_acc.append(tra_acc)
+        # test_acc.append(tes_acc)
         checkpoint = {
             'epoch': epoch,
-            'test_loss': test_loss,
-            'train_loss': train_loss,
-            'train_acc': train_acc,
-            'test_acc': test_acc,
+            # 'test_loss': test_loss,
+            # 'train_loss': train_loss,
+            # 'train_acc': train_acc,
+            # 'test_acc': test_acc,
             'model_state_dict': net.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
         }
@@ -227,16 +235,20 @@ if(yes_no=="yes"):
     for epoch in range(start_epoch, start_epoch + num_epoch):
         tra_loss, tra_acc = train(epoch)
         tes_loss, tes_acc = test(epoch)
-        train_loss.append(tra_loss)
-        test_loss.append(tes_loss)
-        train_acc.append(tra_acc)
-        test_acc.append(tes_acc)
+        writer1.add_scalar('train_loss',tra_loss,global_step=epoch)
+        writer1.add_scalar('train_acc', tra_acc, global_step=epoch)
+        writer1.add_scalar('test_loss', tes_loss, global_step=epoch)
+        writer1.add_scalar('test_acc', tes_acc, global_step=epoch)
+        # train_loss.append(tra_loss)
+        # test_loss.append(tes_loss)
+        # train_acc.append(tra_acc)
+        # test_acc.append(tes_acc)
         checkpoint = {
             'epoch': epoch,
-            'test_loss': test_loss,
-            'train_loss': train_loss,
-            'train_acc': train_acc,
-            'test_acc': test_acc,
+            # 'test_loss': test_loss,
+            # 'train_loss': train_loss,
+            # 'train_acc': train_acc,
+            # 'test_acc': test_acc,
             'model_state_dict': net.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
         }
@@ -244,30 +256,30 @@ if(yes_no=="yes"):
             os.mkdir('checkpoint')
         torch.save(checkpoint, "./checkpoint/CHECKPOINT_FILE")
 #绘图
-x1 = range(0, num_epoch)
-y1 = train_loss
-y2 = test_loss
-z1 = train_acc
-z2 = test_acc
-
-plt.subplot(2, 2, 1)
-plt.plot(x1, y1, 'o-')
-plt.title('Train loss vs. epoches')
-plt.ylabel('train loss')
-plt.subplot(2, 2, 2)
-plt.plot(x1, y2, '.-')
-plt.xlabel('Test loss vs. epoches')
-plt.ylabel('Test loss')
-plt.subplot(2, 2, 3)
-plt.plot(x1, z1, 'o-')
-plt.title('Train acc vs. epoches')
-plt.ylabel('train acc')
-plt.subplot(2, 2, 4)
-plt.plot(x1, z2, '.-')
-plt.xlabel('Test acc vs. epoches')
-plt.ylabel('Test acc')
-plt.show()
-plt.savefig("loss_and_acc.jpg")
+# x1 = range(0, num_epoch)
+# y1 = train_loss
+# y2 = test_loss
+# z1 = train_acc
+# z2 = test_acc
+#
+# plt.subplot(2, 2, 1)
+# plt.plot(x1, y1, 'o-')
+# plt.title('Train loss vs. epoches')
+# plt.ylabel('train loss')
+# plt.subplot(2, 2, 2)
+# plt.plot(x1, y2, '.-')
+# plt.xlabel('Test loss vs. epoches')
+# plt.ylabel('Test loss')
+# plt.subplot(2, 2, 3)
+# plt.plot(x1, z1, 'o-')
+# plt.title('Train acc vs. epoches')
+# plt.ylabel('train acc')
+# plt.subplot(2, 2, 4)
+# plt.plot(x1, z2, '.-')
+# plt.xlabel('Test acc vs. epoches')
+# plt.ylabel('Test acc')
+# plt.show()
+# plt.savefig("loss_and_acc.jpg")
 
 
 

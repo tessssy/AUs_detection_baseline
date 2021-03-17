@@ -5,79 +5,7 @@ import torch.nn as nn
 import torchvision
 from collections import OrderedDict
 import torch.nn.functional as F
-
-
-class resnet_18_pre(nn.Module):
-    def __init__(self, num_labels=12):
-        super(resnet_18_pre, self).__init__()
-        self.feature = torchvision.models.resnet18(pretrained=False)
-        self.feature = torch.nn.Sequential(*list(self.feature.children())[:-1])
-        self.fc = nn.Linear(in_features=512, out_features=num_labels, bias=True)
-
-    def forward(self, x):
-        x = self.feature(x)
-        # the shape before view is  torch.Size([128, 512, 1, 1])
-        x = x.view(x.shape[0], -1)
-        # the shape after view is  torch.Size([128, 512])
-        out = self.fc(x)
-        return out
-
-
-
-class resnet_101_pre(nn.Module):
-    def __init__(self, num_labels=12):
-        super(resnet_101_pre, self).__init__()
-        self.feature = torchvision.models.resnet101(pretrained=True)
-        #只提到[:-4]图片是(512, 28, 28), [:-3]是(1024, 14, 14)
-        print(self.feature)
-        self.feature = torch.nn.Sequential(*list(self.feature.children())[:-3])
-        self.AvgPool = nn.AdaptiveAvgPool2d(output_size=(1, 1)) #TODO:老师提到AvgPool不一定好，没有了空间信息
-        self.fc = nn.Linear(in_features=1024, out_features=num_labels, bias=True)
-        
-
-    def forward(self, x):
-        x = self.feature(x) # (64, 1024, 14, 14) 
-        x = self.AvgPool(x)# (64, 1024, 1, 1)
-        x = x.view(x.shape[0], -1)  #(64, 1024)
-        # print(x.shape)
-        out = self.fc(x)    # (64, 14)
-        return out
-
-
-class MobileNet_pre(nn.Module):
-    def __init__(self, num_labels=12):
-        super(MobileNet_pre, self).__init__()
-        self.feature = torchvision.models.mobilenet_v2()
-        self.fc = nn.Linear(in_features=1000, out_features=num_labels, bias=True)
-    
-
-    def forward(self, x):
-        x = self.feature(x)
-        out = self.fc(x)
-        return out
-
-class mobilenet_test(nn.Module):
-
-    def __init__(self, num_labels=12):
-        super(mobilenet_test, self).__init__()
-        self.feature = torchvision.models.mobilenet_v2()
-        self.feature = torch.nn.Sequential(*list(self.feature.children())[:-1])
-        self.AvgPool = nn.AdaptiveAvgPool2d(output_size=(1, 1))
-        self.drop_fc = nn.Sequential(OrderedDict([
-            ('0', nn.Dropout(p=0.4, inplace=False)),
-            ('1', nn.Linear(in_features=1280, out_features=num_labels, bias=True))
-        ]))
-
-    def forward(self, x):
-        x = self.feature(x)
-        x = self.AvgPool(x)# (64, 1024, 1, 1)
-        x = x.view(x.shape[0], -1)  #(64, 1024)
-        out = self.drop_fc(x)
-        return out
-
-
-
-#自己搭一个resnet34来试一试先
+#resnet34
 
 class ResidualBlock(nn.Module):
     # 实现子module：Residual Block
@@ -101,7 +29,7 @@ class ResidualBlock(nn.Module):
 
 class ResNet34(nn.Module):  # 224x224x3
     # 实现主module:ResNet34
-    def __init__(self, num_classes=1):
+    def __init__(self, num_classes=12):
         super(ResNet34, self).__init__()
         self.pre = nn.Sequential(
             nn.Conv2d(3, 64, 7, stride=2, padding=3, bias=False),  # (224+2*p-)/2(向下取整)+1，size减半->112
@@ -117,6 +45,7 @@ class ResNet34(nn.Module):  # 224x224x3
         self.layer4 = self.make_layer(256, 512, 3, stride=2)  # 7x7x512
         # 分类用的全连接
         self.fc = nn.Linear(512, num_classes)
+        self.bn = nn.BatchNorm1d(49).to('cuda:1')
 
     def make_layer(self, in_ch, out_ch, block_num, stride=1):
         # 当维度增加时，对shortcut进行option B的处理
@@ -137,10 +66,32 @@ class ResNet34(nn.Module):  # 224x224x3
         x = self.layer2(x)  # 28x28x128
         x = self.layer3(x)  # 14x14x256
         x = self.layer4(x)  # 7x7x512
-        x = F.avg_pool2d(x, 7)  # 1x1x512
-        x = x.view(x.size(0), -1)  # 将输出拉伸为一行：1x512
-        x = self.fc(x)  # 1x1
-        # nn.BCELoss:二分类用的交叉熵，用的时候需要在该层前面加上 Sigmoid 函数
-        return nn.Sigmoid()(x)  # 1x1，将结果化为(0~1)之间
+        #取到7x7的每一个像素送进lstm
+        # h0 = torch.empty(49, x.shape[0], 1).to('cuda:1')
+        # c0 = torch.empty(49, x.shape[0], 1).to('cuda:1')
+        x=x.reshape([x.shape[0],512,49])
+
+        x=x.transpose(0,2)
+        input=x.transpose(1,2) #49x128x512
+        # rnn = nn.LSTM(512, 512, 2)
+        # rnn.to('cuda:0')
+        # output,(hn,cn) = rnn(input)
+        # output = output.mean(0)
+        # output = self.fc(output)
+        # nn.init.xavier_normal_(h0,gain=20)
+        # nn.init.xavier_normal_(c0,gain=20)
+        out=torch.zeros([input.shape[1],12]).to('cuda:1')
+        for i in range(12):
+            rnn = nn.LSTM(512, 49, 1,dropout=0.2)
+            rnn.to('cuda:1')
+            output,(hn,cn)=rnn(input)
+            hn=hn.transpose(1,2)
+            hn=self.bn(hn)
+#            hn=hn.mean(1)#128x1
+            out[:,i]=torch.add(out[:,i],hn[:,-1,:])
+        # x = F.avg_pool2d(x, 7)  # 1x1x512
+        # x = x.view(x.size(0), -1)  # 将输出拉伸为一行：1x512
+        # x = self.fc(x)  # 1x1     这里也截取一下
+        return out  # 1x1，将结果化为(0~1)之间 最后得输出肯定是128x12得
 
 
