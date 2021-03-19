@@ -1,12 +1,7 @@
-#参考:https://github.com/HaoMood/blinear-cnn-faster/blob/master/src/model.py
-
 import torch
 import torch.nn as nn
-import torchvision
-from collections import OrderedDict
 import torch.nn.functional as F
 #resnet34
-
 class ResidualBlock(nn.Module):
     # 实现子module：Residual Block
     def __init__(self, in_ch, out_ch, stride=1, shortcut=None):
@@ -39,7 +34,7 @@ class ResNet34(nn.Module):  # 224x224x3
         )  # 56x56x64
 
         # 重复的layer,分别有3,4,6,3个residual block
-        self.layer1 = self.make_layer(64, 64, 3)  # 56x56x64,layer1层输入输出一样，make_layer里，应该不用对shortcut进行处理，但是为了统一操作。。。
+        self.layer1 = self.make_layer(64, 64, 3)  # 56x56x64,layer1层输入输出一样
         self.layer2 = self.make_layer(64, 128, 4, stride=2)  # 第一个stride=2,剩下3个stride=1;28x28x128
         self.layer3 = self.make_layer(128, 256, 6, stride=2)  # 14x14x256
         self.layer4 = self.make_layer(256, 512, 3, stride=2)  # 7x7x512
@@ -73,18 +68,12 @@ class ResNet34(nn.Module):  # 224x224x3
         x = self.layer3(x)  # 14x14x256
         x = self.layer4(x)  # 7x7x512
         #取到7x7的每一个像素送进lstm
-        # h0 = torch.empty(49, x.shape[0], 1).to('cuda:1')
+        # h0 = torch.empty(49, x.shape[0], 1).to('cuda:1')  #初始化参数（非必要）
         # c0 = torch.empty(49, x.shape[0], 1).to('cuda:1')
         x=x.reshape([x.shape[0],512,49])
-
         x=x.transpose(0,2)
         input=x.transpose(1,2) #49x128x512
-        # rnn = nn.LSTM(512, 512, 2)
-        # rnn.to('cuda:0')
-        # output,(hn,cn) = rnn(input)
-        # output = output.mean(0)
-        # output = self.fc(output)
-        # nn.init.xavier_normal_(h0,gain=20)
+        # nn.init.xavier_normal_(h0,gain=20)   #参数初始化
         # nn.init.xavier_normal_(c0,gain=20)
         out=torch.zeros([input.shape[1],12]).to('cuda:1')
         for i in range(12):
@@ -93,7 +82,7 @@ class ResNet34(nn.Module):  # 224x224x3
             out[:,i]=torch.add(out[:,i],hn)
         # x = F.avg_pool2d(x, 7)  # 1x1x512
         # x = x.view(x.size(0), -1)  # 将输出拉伸为一行：1x512
-        # x = self.fc(x)  # 1x1     这里也截取一下
+        # x = self.fc(x)  # 1x1     这里也截取一下  原先resnet34得部分
         return out  # 1x1，将结果化为(0~1)之间 最后得输出肯定是128x12得
 
 

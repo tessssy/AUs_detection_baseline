@@ -13,7 +13,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 warnings.filterwarnings("ignore")
 
-writer1=SummaryWriter('runs_11')
+writer1=SummaryWriter('runs_13')
 
 # ----------------------------------------------------------
 # train on BP4D
@@ -65,7 +65,7 @@ def train(epoch):
         if (Not_nan == 0):
             print("This batch contains no AUs")
         else:
-            # avg_acc = Sum / Not_nan
+            # avg_acc = Sum / Not_nan                  #一个batch得平均准确率 和loss
             # print(str(batch_idx) + 'avg:{:.6f}|loss:{:.6f}'.format(avg_acc, loss.item()))
             for i in range(len(au_keys)):
                 acc_in_epoch[i] = pred[i] + acc_in_epoch[i]
@@ -81,7 +81,7 @@ def train(epoch):
     train_loss = train_loss / batch_idx
     train_acc=sum(train_acc_in_epoch)/len(train_acc_in_epoch)
     print(train_acc)
-    return train_loss,train_acc
+    return train_loss,train_acc,Aus_dict
 @torch.no_grad()
 def test(epoch):
     print('\nEpoch(validation): %d' % epoch)
@@ -140,7 +140,7 @@ def test(epoch):
     test_loss = test_loss / batch_idx
     test_acc = sum(test_acc_in_epoch) / len(test_acc_in_epoch)
     print(test_acc)
-    return test_loss, test_acc
+    return test_loss, test_acc,Aus_dict
 
 # -------------------------------------------------------------------------------
 sequences, _ = BP4D_load_data.get_sequences_task()   # sequences, _文件名
@@ -154,7 +154,8 @@ if torch.cuda.is_available():
 else:
     device='cpu'
 
-yes_no = input("Is this the first time running(yes/no):")
+# yes_no = input("Is this the first time running(yes/no):")
+yes_no='yes'
 print('==> Preparing data...')
 transform_train = transforms.Compose([      #图片预处理  模型pretrained
     transforms.RandomCrop(224),
@@ -164,21 +165,20 @@ transform_train = transforms.Compose([      #图片预处理  模型pretrained
 ])
 transform_val = transforms.Compose([
     transforms.CenterCrop(224),
-    # transforms.RandomHorizontalFlip(),
     transforms.ToTensor(),
     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
 ])
 
 trainset = MyBP4D(train_seq, train=True, transform=transform_train)
-trainloader = DataLoader(trainset, batch_size=128, shuffle=True, num_workers=0)
+trainloader = DataLoader(trainset, batch_size=200, shuffle=True, num_workers=0)
 
 valset = MyBP4D(val_seq, train=False, transform=transform_val)
-valloader = DataLoader(valset, batch_size=128, shuffle=True, num_workers=0)
+valloader = DataLoader(valset, batch_size=200, shuffle=True, num_workers=0)
 
 #Model
 print("start the net")
 net = ResNet34(12)
-#if torch.cuda.device_count() > 1:  # 查看当前电脑的可用的gpu的数量，若gpu数量>1,就多gpu训练
+# if torch.cuda.device_count() > 1:  # 查看当前电脑的可用的gpu的数量，若gpu数量>1,就多gpu训练
 #     net = torch.nn.DataParallel(net,deviceidx)    #多gpu训练,自动选择gpu
 net.to(device)
 
@@ -189,12 +189,12 @@ optimizer = optim.SGD(net.parameters(), lr=train_lr, momentum=0.9, weight_decay=
 print('the learning rate is ', train_lr)
 
 start_epoch = 0  # start from epoch 0 or last checkpoint epoch
-num_epoch =200
+num_epoch =500
 # train_loss = []
 # test_loss = []
 # train_acc = []
 # test_acc = []
-#断点重传
+#断点重传  绘图（如果tensorboard用不了）
 if(yes_no=="no"):
     start_epoch = -1
     print('-----------------------------')
@@ -211,12 +211,20 @@ if(yes_no=="no"):
     print("start_epoch:", start_epoch)
     print('-----------------------------')
     for epoch in range(start_epoch + 1, num_epoch):
-        tra_loss,tra_acc = train(epoch)
-        tes_loss,tes_acc = test(epoch)
-        writer1.add_scalar('train_loss', tra_loss, global_step=epoch)
-        writer1.add_scalar('train_acc', tra_acc, global_step=epoch)
-        writer1.add_scalar('test_loss', tes_loss, global_step=epoch)
-        writer1.add_scalar('test_acc', tes_acc, global_step=epoch)
+        loss_dict = {}
+        acc_dict = {}
+        Aus_in_tra={}
+        Aus_in_tes={}
+        tra_loss,tra_acc,Aus_in_tra = train(epoch)
+        tes_loss,tes_acc,Aus_in_tes = test(epoch)
+        loss_dict.update({'train_loss': tra_loss})
+        loss_dict.update({'test_loss': tes_loss})
+        acc_dict.update({'train_acc': tra_acc})
+        acc_dict.update({'test_acc': tes_acc})
+        writer1.add_scalars('loss', loss_dict, global_step=epoch)
+        writer1.add_scalars('acc', acc_dict, global_step=epoch)
+        writer1.add_scalars('Aus_in_train', Aus_in_tra, global_step=epoch)
+        writer1.add_scalars('Aus_in_test', Aus_in_tes, global_step=epoch)
         # train_loss.append(tra_loss)
         # test_loss.append(tes_loss)
         # train_acc.append(tra_acc)
@@ -233,12 +241,20 @@ if(yes_no=="no"):
         torch.save(checkpoint, "./checkpoint/CHECKPOINT_FILE")
 if(yes_no=="yes"):
     for epoch in range(start_epoch, start_epoch + num_epoch):
-        tra_loss, tra_acc = train(epoch)
-        tes_loss, tes_acc = test(epoch)
-        writer1.add_scalar('train_loss',tra_loss,global_step=epoch)
-        writer1.add_scalar('train_acc', tra_acc, global_step=epoch)
-        writer1.add_scalar('test_loss', tes_loss, global_step=epoch)
-        writer1.add_scalar('test_acc', tes_acc, global_step=epoch)
+        loss_dict = {}
+        acc_dict = {}
+        Aus_in_tra = {}
+        Aus_in_tes = {}
+        tra_loss, tra_acc, Aus_in_tra = train(epoch)
+        tes_loss, tes_acc, Aus_in_tes = test(epoch)
+        loss_dict.update({'train_loss': tra_loss})
+        loss_dict.update({'test_loss': tes_loss})
+        acc_dict.update({'train_acc': tra_acc})
+        acc_dict.update({'test_acc': tes_acc})
+        writer1.add_scalars('loss', loss_dict, global_step=epoch)
+        writer1.add_scalars('acc', acc_dict, global_step=epoch)
+        writer1.add_scalars('Aus_in_train', Aus_in_tra, global_step=epoch)
+        writer1.add_scalars('Aus_in_test', Aus_in_tes, global_step=epoch)
         # train_loss.append(tra_loss)
         # test_loss.append(tes_loss)
         # train_acc.append(tra_acc)
