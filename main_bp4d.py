@@ -4,7 +4,6 @@ from tqdm import tqdm
 from myNets import *
 #from sklearn.metrics import f1_score
 from MyDatasets import *
-#import matplotlib.pyplot as plt
 import torch.nn.functional as F
 from torchvision import transforms
 #import numpy as np
@@ -144,8 +143,6 @@ def test(epoch):
 
 # -------------------------------------------------------------------------------
 sequences, _ = BP4D_load_data.get_sequences_task()   # sequences, _文件名
-# temp_train_seq, test_seq = get_test(sequences)
-# train_seq, val_seq = get_train_val(temp_train_seq)
 train_seq, val_seq = get_train_val(sequences)   #MyDatasets.get_train_val()
 
 if torch.cuda.is_available():
@@ -192,11 +189,7 @@ print('the learning rate is ', train_lr)
 
 start_epoch = 0  # start from epoch 0 or last checkpoint epoch
 num_epoch =300
-# train_loss = []
-# test_loss = []
-# train_acc = []
-# test_acc = []
-#断点重传  绘图（如果tensorboard用不了）
+#断点重传
 if(yes_no=="no"):
     start_epoch = -1
     print('-----------------------------')
@@ -206,10 +199,6 @@ if(yes_no=="no"):
     net.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     start_epoch = checkpoint['epoch']
-    # train_loss = checkpoint['train_loss']
-    # test_loss = checkpoint['test_loss']
-    # train_acc = checkpoint['train_acc']
-    # test_acc = checkpoint['test_acc']
     print("start_epoch:", start_epoch)
     print('-----------------------------')
     for epoch in range(start_epoch + 1, num_epoch):
@@ -227,16 +216,8 @@ if(yes_no=="no"):
         writer1.add_scalars('acc', acc_dict, global_step=epoch)
         writer1.add_scalars('Aus_in_train', Aus_in_tra, global_step=epoch)
         writer1.add_scalars('Aus_in_test', Aus_in_tes, global_step=epoch)
-        # train_loss.append(tra_loss)
-        # test_loss.append(tes_loss)
-        # train_acc.append(tra_acc)
-        # test_acc.append(tes_acc)
         checkpoint = {
             'epoch': epoch,
-            # 'test_loss': test_loss,
-            # 'train_loss': train_loss,
-            # 'train_acc': train_acc,
-            # 'test_acc': test_acc,
             'model_state_dict': net.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
         }
@@ -265,46 +246,13 @@ if(yes_no=="yes"):
         writer1.add_scalars('acc', acc_dict, global_step=epoch)
         writer1.add_scalars('Aus_in_train', Aus_in_tra, global_step=epoch)
         writer1.add_scalars('Aus_in_test', Aus_in_tes, global_step=epoch)
-        # train_loss.append(tra_loss)
-        # test_loss.append(tes_loss)
-        # train_acc.append(tra_acc)
-        # test_acc.append(tes_acc)
         checkpoint = {
             'epoch': epoch,
-            # 'test_loss': test_loss,
-            # 'train_loss': train_loss,
-            # 'train_acc': train_acc,
-            # 'test_acc': test_acc,
             'model_state_dict': net.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
         }
 
         torch.save(checkpoint, "./checkpoint/CHECKPOINT_FILE")
-#绘图
-# x1 = range(0, num_epoch)
-# y1 = train_loss
-# y2 = test_loss
-# z1 = train_acc
-# z2 = test_acc
-#
-# plt.subplot(2, 2, 1)
-# plt.plot(x1, y1, 'o-')
-# plt.title('Train loss vs. epoches')
-# plt.ylabel('train loss')
-# plt.subplot(2, 2, 2)
-# plt.plot(x1, y2, '.-')
-# plt.xlabel('Test loss vs. epoches')
-# plt.ylabel('Test loss')
-# plt.subplot(2, 2, 3)
-# plt.plot(x1, z1, 'o-')
-# plt.title('Train acc vs. epoches')
-# plt.ylabel('train acc')
-# plt.subplot(2, 2, 4)
-# plt.plot(x1, z2, '.-')
-# plt.xlabel('Test acc vs. epoches')
-# plt.ylabel('Test acc')
-# plt.show()
-# plt.savefig("loss_and_acc.jpg")
 
 
 
