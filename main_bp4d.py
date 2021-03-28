@@ -1,7 +1,7 @@
 from torch.utils.data import  DataLoader
 import torch.optim as optim
 from tqdm import tqdm
-from myResnet import *
+from myNets import *
 #from sklearn.metrics import f1_score
 from MyDatasets import *
 #import matplotlib.pyplot as plt
@@ -13,7 +13,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 warnings.filterwarnings("ignore")
 
-writer1=SummaryWriter('runs_13')
+writer1=SummaryWriter('runs_18')
 
 # ----------------------------------------------------------
 # train on BP4D
@@ -170,14 +170,16 @@ transform_val = transforms.Compose([
 ])
 
 trainset = MyBP4D(train_seq, train=True, transform=transform_train)
-trainloader = DataLoader(trainset, batch_size=200, shuffle=True, num_workers=0)
+trainloader = DataLoader(trainset, batch_size=180, shuffle=True, num_workers=0)
 
 valset = MyBP4D(val_seq, train=False, transform=transform_val)
-valloader = DataLoader(valset, batch_size=200, shuffle=True, num_workers=0)
+valloader = DataLoader(valset, batch_size=180, shuffle=True, num_workers=0)
 
 #Model
 print("start the net")
-net = ResNet34(12)
+# net = ResNet34(12)
+# net = Lnet(12)
+net = Transformer(12)
 # if torch.cuda.device_count() > 1:  # 查看当前电脑的可用的gpu的数量，若gpu数量>1,就多gpu训练
 #     net = torch.nn.DataParallel(net,deviceidx)    #多gpu训练,自动选择gpu
 net.to(device)
@@ -189,7 +191,7 @@ optimizer = optim.SGD(net.parameters(), lr=train_lr, momentum=0.9, weight_decay=
 print('the learning rate is ', train_lr)
 
 start_epoch = 0  # start from epoch 0 or last checkpoint epoch
-num_epoch =500
+num_epoch =300
 # train_loss = []
 # test_loss = []
 # train_acc = []
@@ -240,6 +242,14 @@ if(yes_no=="no"):
         }
         torch.save(checkpoint, "./checkpoint/CHECKPOINT_FILE")
 if(yes_no=="yes"):
+    path_pretrain = "./Resnet34model/model_state.pth"
+    pretrained = torch.load(path_pretrain)
+    model_dict = net.state_dict()
+    # 1. filter out unnecessary keys
+    pretrained = {k: v for k, v in pretrained.items() if k in model_dict}
+    # 2. overwrite entries in the existing state dict
+    model_dict.update(pretrained)
+    net.load_state_dict(model_dict)
     for epoch in range(start_epoch, start_epoch + num_epoch):
         loss_dict = {}
         acc_dict = {}
@@ -268,8 +278,7 @@ if(yes_no=="yes"):
             'model_state_dict': net.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
         }
-        if not os.path.isdir('checkpoint'):
-            os.mkdir('checkpoint')
+
         torch.save(checkpoint, "./checkpoint/CHECKPOINT_FILE")
 #绘图
 # x1 = range(0, num_epoch)
