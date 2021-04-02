@@ -3,7 +3,6 @@ import numpy as np
 import pandas as pd
 from PIL import Image
 import pickle
-import main_bp4d
 
 
 
@@ -74,6 +73,7 @@ def get_sequences_task():
 
 def load_data(sequences):
     # 用于读取pkl中的数据，并将不同序列的数据整合到一起。用于获得train和test等
+    import main_bp4d
     pkl_folder = os.path.join(main_bp4d.args.PATH_dataset)
     for seq in sequences:
         print('loading the pkl: {}.pkl'.format(seq))

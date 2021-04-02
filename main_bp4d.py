@@ -2,6 +2,7 @@ from torch.utils.data import  DataLoader
 import torch.optim as optim
 from tqdm import tqdm
 from myNets import *
+import BP4D_load_data
 #from sklearn.metrics import f1_score
 from MyDatasets import *
 import torch.nn.functional as F
@@ -20,12 +21,12 @@ parser.add_argument('--lr',default=0.001,type=float)
 parser.add_argument('--batchsize',default=200,type=int)
 parser.add_argument('--device',default="cuda:1",type=str)
 parser.add_argument('--num_epoch',default=300,type=int)
-parser.add_argument('--num_workers',default=8,type=int)
+parser.add_argument('--num_workers',default=4,type=int)
 parser.add_argument('--N_fold',default=6,type=int,help="the ratio of train and validation data")
 parser.add_argument('--PATH_Checkpoint',default="./checkpoint/CHECKPOINT_FILE",type=str)
 parser.add_argument('--PATH_pretrain',default="./Resnet34model/model_state.pth",type=str)
 parser.add_argument('--PATH_dataset',default="./",type=str)
-parser.add_argument('--PATH_dataset',default="BP4D",type=str)
+parser.add_argument('--dataset',default="BP4D",type=str)
 parser.add_argument('--FirstTimeRunning',default=None,type=str,help="No means reading from the checkpoint_file")
 parser.add_argument('--model',default=None,type=str,help="choose from Resnet34、Lnet and Transformer")
 args = parser.parse_args()
@@ -74,7 +75,7 @@ def train(epoch):
         outputs = net(inputs)
         # functional.BCE_with_logits自范带对预测分数进行sigmoid操作，因此可以无所谓outputs的取值围
         loss = F.binary_cross_entropy_with_logits(outputs, targets, reduction='mean',pos_weight=weight).to(device)
-        loss.backward()
+        loss.backward()    #loss flooding?
         optimizer.step()
         train_loss += loss.item()
         m = nn.Sigmoid()
