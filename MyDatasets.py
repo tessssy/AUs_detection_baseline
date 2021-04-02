@@ -5,6 +5,7 @@ from PIL import Image
 import random
 import os
 import BP4D_load_data
+import main_bp4d
 
 # Datasets
 
@@ -114,8 +115,9 @@ class MyBP4D(Dataset):
 #     train, test = seq[offset:], seq[:offset]
 #     return train, test
 
-def get_train_val(seq, num_fold=6, fold=0):                  # cross_validation ? 验证集的前几个可能有空值了
+def get_train_val(seq, fold=0):                  # cross_validation ? 验证集的前几个可能有空值了
     # 划分train和validation
+    num_fold=main_bp4d.args.N_fold
     split = len(seq) // num_fold
 
     if fold == (num_fold - 1):

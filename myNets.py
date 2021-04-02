@@ -79,7 +79,7 @@ class Lnet(ResNet34):
     def init(self,x):
         h0 = torch.empty(1, x.shape[0], 49).to('cuda:1')  #初始化参数（非必要）
         c0 = torch.empty(1, x.shape[0], 49).to('cuda:1')
-        nn.init.xavier_normal_(h0,gain=20)   #参数初始化
+        nn.init.xavier_normal_(h0,gain=20)
         nn.init.xavier_normal_(c0,gain=20)
 
     def reshape_data(self,x):
@@ -101,7 +101,7 @@ class Lnet(ResNet34):
             output,(hn,cn)=self.lstm_list[i](input)
             hn=hn.mean(2)#128x1
             out[:,i]=torch.add(out[:,i],hn)
-        return out  # 1x1，将结果化为(0~1)之间 最后得输出肯定是128x12得
+        return out  # 1x1，将结果化为(0~1)之间 最后得输出肯定是128x12
 
 class Transformer(ResNet34):
     def __init__(self, num_classes):
@@ -111,6 +111,10 @@ class Transformer(ResNet34):
         # for i in range(num_classes):
         #     self.transformer = TransformerModel(ninp=512, nhead=4, nhid=512, nlayers=2, dropout=0.5).to('cuda:1')
         #     self.transformer_list.append(self.transformer)
+        self.lstm_list = []
+        for i in range(num_classes):
+            self.lstm = nn.LSTM(512, 49, 1, dropout=0.2).to('cuda:1')
+            self.lstm_list.append(self.lstm)
         #只用一个
         self.transformer = TransformerModel(num=num_classes,ninp=512, nhead=4, nhid=512, nlayers=2, dropout=0.5).to('cuda:1')
 
@@ -135,8 +139,13 @@ class Transformer(ResNet34):
         #     output=output.mean(1)
         #     out[:,i]=torch.add(out[:,i],output)
         # 一个Encoder
-        out = self.transformer(input)
-        return out  # 1x1，将结果化为(0~1)之间 最后得输出肯定是128x12得
+        res = self.transformer(input)
+        # out = torch.zeros([input.shape[1], 12]).to('cuda:1')  # LSTM
+        # for i in range(12):
+        #     output, (hn, cn) = self.lstm_list[i](res)
+        #     hn = hn.mean(2)  # 128x1
+        #     out[:, i] = torch.add(out[:, i], hn)
+        return res  # 1x1，将结果化为(0~1)之间 最后得输出肯定是128x12
 
 #Encoder
 class PositionalEncoding(nn.Module):
@@ -165,7 +174,7 @@ class TransformerModel(nn.Module):
         encoder_layers = TransformerEncoderLayer(ninp, nhead, nhid, dropout)
         self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
         self.ninp = ninp
-        self.decoder = nn.Linear(ninp, num)
+        self.decoder = nn.Linear(25088, num)
         self.init_weights()
 
     def init_weights(self):
@@ -175,8 +184,11 @@ class TransformerModel(nn.Module):
 
     def forward(self, src):
         src = self.pos_encoder(src)
-        output = self.transformer_encoder(src)
-        output=output.mean(0)
+        output = self.transformer_encoder(src) #49xbsx512
+        output = output.transpose(0,1)
+        # output = output.mean(1)
+        # output = output.transpose(1,2)
+        output = output.reshape([output.size(0),25088])  # 将输出拉伸为一行：1x512
         output = self.decoder(output)
         return output
 

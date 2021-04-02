@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 from PIL import Image
 import pickle
+import main_bp4d
 
 
 
@@ -73,7 +74,7 @@ def get_sequences_task():
 
 def load_data(sequences):
     # 用于读取pkl中的数据，并将不同序列的数据整合到一起。用于获得train和test等
-    pkl_folder = os.path.join('./')
+    pkl_folder = os.path.join(main_bp4d.args.PATH_dataset)
     for seq in sequences:
         print('loading the pkl: {}.pkl'.format(seq))
         temp_images, temp_labels = pickle.load(open(os.path.join(pkl_folder, '{}.pkl'.format(seq)), 'rb'))
@@ -83,5 +84,12 @@ def load_data(sequences):
         else:
             images = images + temp_images
             labels = np.concatenate((labels, temp_labels), axis=0)
+    i=0                                                        #load的时候去掉空值标签
+    while(i!=len(labels)):
+        if(sum(labels[i,:])==0):
+            labels = np.delete(labels, i, axis=0)
+            images.pop(i)
+        else:
+            i=i+1
     # 返回images是list，单个值对应单张图片,shape(240,240,3)。labels是numpy.ndarray
-    return images, labels
+    return images, labels #train:124048   删除后：113149    test删除后:22079
