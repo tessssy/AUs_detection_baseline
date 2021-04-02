@@ -72,7 +72,7 @@ def get_sequences_task():
 
 
 def load_data(sequences):
-    # 用于读取pkl中的数据，并将不同序列的数据整合到一起。用于获得train和test等
+    # 用于读取pkl中的数据，并将不同序列的数据整合到一起。用于获得train和validation等
     import main_bp4d
     pkl_folder = os.path.join(main_bp4d.args.PATH_dataset)
     for seq in sequences:
@@ -92,4 +92,4 @@ def load_data(sequences):
         else:
             i=i+1
     # 返回images是list，单个值对应单张图片,shape(240,240,3)。labels是numpy.ndarray
-    return images, labels #train:124048   删除后：113149    test删除后:22079
+    return images, labels #train:124048   删除后：113149    validation删除后:22079

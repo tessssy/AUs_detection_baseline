@@ -38,10 +38,10 @@ batchsize = args.batchsize
 train_lr = args.lr
 start_epoch = 0  # start from epoch 0 or last checkpoint epoch
 num_epoch = args.num_epoch
+au_keys = ['au1', 'au2', 'au4', 'au6', 'au7', 'au10', 'au12', 'au14', 'au15', 'au17', 'au23', 'au24']
 
 # weight
 def weighted(dataloader):
-    au_keys = ['au1', 'au2', 'au4', 'au6', 'au7', 'au10', 'au12', 'au14', 'au15', 'au17', 'au23', 'au24']
     total_in_epoch = [0 for i in range(len(au_keys))]
     for batch_idx, (inputs, targets) in enumerate(dataloader):
         total = []
@@ -55,17 +55,52 @@ def weighted(dataloader):
         weight.append((Alldata-total_in_epoch[i])/total_in_epoch[i])
     weight_to_tensor=torch.FloatTensor(weight)
     return weight_to_tensor
-
+def calculate_Acc(outputs,targets,acc_sum_allset,total_sum_allset,acc_in_allset,au_keys):
+    sum_pred = [0 for i in range(len(au_keys))]  # 一个batch的准确率之和
+    m = nn.Sigmoid()
+    predicted = m(outputs)
+    for i in range(len(targets)):
+        if (targets[i, :].nonzero().numel() != 0):
+            index_1 = targets[i, :].nonzero()
+            for j in index_1:
+                sum_pred[j] = sum_pred[j] + predicted[i, j].item()
+    sum_inbatch = []
+    acc_inbatch = []
+    Sum = 0
+    Not_nan = 0
+    for i in range(len(au_keys)):
+        sum_inbatch.append(targets[:, i].sum().item())
+        if (sum_inbatch[i] != 0):
+            acc = sum_pred[i] / sum_inbatch[i]
+            acc_inbatch.append(acc)
+        else:
+            acc = 0.5
+            acc_inbatch.append(acc)
+        if (acc_inbatch[i] != 0):
+            Sum = acc_inbatch[i] + Sum
+            Not_nan = Not_nan + 1
+    if (Not_nan == 0):
+        print("This batch contains no AUs")  #load_data的时候已经把全0的去掉了，这里还是象征性的判断一下
+    else:
+        # avg_acc = Sum / Not_nan                  #一个batch得平均准确率 和loss
+        # print(str(batch_idx) + 'avg:{:.6f}|loss:{:.6f}'.format(avg_acc, loss.item())) # 没什么意义，如果想看就把参数传进来
+        for i in range(len(au_keys)):
+            acc_sum_allset[i] = sum_pred[i] + acc_sum_allset[i]
+            total_sum_allset[i] = sum_inbatch[i] + total_sum_allset[i]
+            if (total_sum_allset[i] != 0):
+                acc_in_allset[i] = acc_sum_allset[i] / total_sum_allset[i]
+            else:
+                acc_in_allset[i] = 0
+    return acc_in_allset
 # Training
 def train(epoch):
     print('\nEpoch: %d' % epoch)
     # net.module
     net.train()
-    au_keys = ['au1', 'au2', 'au4', 'au6', 'au7', 'au10', 'au12', 'au14', 'au15', 'au17', 'au23', 'au24']
     train_loss = 0
-    acc_in_epoch = [0 for i in range(len(au_keys))]
-    total_in_epoch = [0 for i in range(len(au_keys))]
-    train_acc_in_epoch = [0 for i in range(len(au_keys))]
+    acc_sum_allset = [0 for i in range(len(au_keys))]   #整个set的概率和
+    total_sum_allset = [0 for i in range(len(au_keys))] #整个set的AU数量
+    acc_in_allset = [0 for i in range(len(au_keys))] #整个set的准确率
     weight=weighted(trainloader).to(device)
     for batch_idx, (inputs, targets) in enumerate(tqdm(trainloader)):
         inputs, targets = inputs.to(device), targets.to(device).squeeze(dim=1).float()
@@ -78,109 +113,39 @@ def train(epoch):
         loss.backward()    #loss flooding?
         optimizer.step()
         train_loss += loss.item()
-        m = nn.Sigmoid()
-        predicted = m(outputs)
-        pred = [0 for i in range(len(au_keys))]
-        for i in range(len(targets)):
-            if(targets[i,:].nonzero().numel()!=0):
-                index_1=targets[i,:].nonzero()
-                for j in index_1:
-                    pred[j]=pred[j]+predicted[i,j].item()
-        total = []
-        total_acc = []
-        Sum = 0
-        Not_nan = 0
-        for i in range(len(au_keys)):
-            total.append(targets[:, i].sum().item())
-            if(total[i]!=0):
-                acc = pred[i] / total[i]
-                total_acc.append(acc)
-            else:
-                acc=0.5
-                total_acc.append(acc)
-            if (total_acc[i]!=0):
-                Sum = total_acc[i] + Sum
-                Not_nan = Not_nan + 1
-        if (Not_nan == 0):
-            print("This batch contains no AUs")
-        else:
-            # avg_acc = Sum / Not_nan                  #一个batch得平均准确率 和loss
-            # print(str(batch_idx) + 'avg:{:.6f}|loss:{:.6f}'.format(avg_acc, loss.item()))
-            for i in range(len(au_keys)):
-                acc_in_epoch[i] = pred[i] + acc_in_epoch[i]
-                total_in_epoch[i] = total[i] + total_in_epoch[i]
-                if(total_in_epoch[i]!=0):
-                    train_acc_in_epoch[i]=acc_in_epoch[i]/total_in_epoch[i]
-                else:
-                    train_acc_in_epoch[i]=0
+        train_acc_in_allset=calculate_Acc(outputs,targets,acc_sum_allset,total_sum_allset,acc_in_allset,au_keys)
     Aus_dict={}
     for i in range(len(au_keys)):
-        Aus_dict.update({au_keys[i]:train_acc_in_epoch[i]})
+        Aus_dict.update({au_keys[i]:train_acc_in_allset[i]})
     print(Aus_dict)
     train_loss = train_loss / (batch_idx+1)
-    train_acc=sum(train_acc_in_epoch)/len(train_acc_in_epoch)
+    train_acc=sum(train_acc_in_allset)/len(train_acc_in_allset)
     print(train_acc)
     return train_loss,train_acc,Aus_dict
 @torch.no_grad()
-def test(epoch):
+def val(epoch):
     print('\nEpoch(validation): %d' % epoch)
     net.eval()
-    test_loss = 0
-    au_keys = ['au1', 'au2', 'au4', 'au6', 'au7', 'au10', 'au12', 'au14', 'au15', 'au17', 'au23', 'au24']
-    acc_in_epoch = [0 for i in range(len(au_keys))]
-    total_in_epoch = [0 for i in range(len(au_keys))]
-    test_acc_in_epoch = [0 for i in range(len(au_keys))]
+    val_loss = 0
+    acc_sum_allset = [0 for i in range(len(au_keys))]   #整个set的概率和
+    total_sum_allset = [0 for i in range(len(au_keys))] #整个set的AU数量
+    acc_in_allset = [0 for i in range(len(au_keys))] #整个set的准确率
     weight=weighted(valloader).to(device)
     for batch_idx, (inputs, targets) in enumerate(tqdm(valloader)):
         inputs, targets = inputs.to(device), targets.to(device).squeeze(dim=1).float()
         optimizer.zero_grad()
         outputs = net(inputs)
         loss = F.binary_cross_entropy_with_logits(outputs, targets, reduction='mean',pos_weight=weight).to(device)
-        test_loss += loss.item()
-        m = nn.Sigmoid()
-        predicted = m(outputs)
-        pred = [0 for i in range(len(au_keys))]  #一个batch的准确率总和
-        for i in range(len(targets)):
-            if (targets[i, :].nonzero().numel() != 0):
-                index_1 = targets[i, :].nonzero()
-                for j in index_1:
-                    pred[j] = pred[j] + predicted[i, j].item()
-        total = []
-        total_acc = []  #一个batch里各个AU的总数, 一个batch里全部AU的平均准确率
-        Sum = 0
-        Not_nan = 0
-        for i in range(len(au_keys)):
-            total.append(targets[:, i].sum().item())
-            if(total[i]!=0):
-                acc = pred[i] / total[i]
-                total_acc.append(acc)
-            else:
-                acc=0.5
-                total_acc.append(acc)
-            if(total_acc[i]!=0):
-                Sum=total_acc[i]+Sum
-                Not_nan=Not_nan+1
-        if(Not_nan==0):
-            print("This frame contains no AUs")             #里面有些数据没有标签 是否要去掉
-        else:
-            # avg_acc = Sum / Not_nan  #一个batch的平均准确率
-            # print(str(batch_idx) + 'avg:{:.6f}|loss:{:.6f}'.format(avg_acc, loss.item()))
-            for i in range(len(au_keys)):
-                acc_in_epoch[i]=pred[i]+acc_in_epoch[i]     #整个验证集叠加的AU准确率
-                if (total[i]!=0):
-                    total_in_epoch[i] = total[i] + total_in_epoch[i] #整个验证集的AU数量
-                    if(total_in_epoch!=0):
-                        test_acc_in_epoch[i] = acc_in_epoch[i] / total_in_epoch[i]
-                    else:
-                        test_acc_in_epoch[i]=0
+        val_loss += loss.item()
+        val_acc_in_allset = calculate_Acc(outputs, targets, acc_sum_allset, total_sum_allset, acc_in_allset, au_keys)
     Aus_dict = {}
     for i in range(len(au_keys)):
-        Aus_dict.update({au_keys[i]: test_acc_in_epoch[i]})
+        Aus_dict.update({au_keys[i]: val_acc_in_allset[i]})
     print(Aus_dict)
-    test_loss = test_loss / (batch_idx+1)
-    test_acc = sum(test_acc_in_epoch) / len(test_acc_in_epoch)
-    print(test_acc)
-    return test_loss, test_acc,Aus_dict
+    val_loss = val_loss / (batch_idx+1)
+    val_acc = sum(val_acc_in_allset) / len(val_acc_in_allset)
+    print(val_acc)
+    return val_loss, val_acc,Aus_dict
 
 # -------------------------------------------------------------------------------
 sequences, _ = BP4D_load_data.get_sequences_task()   # sequences, _文件名
@@ -240,15 +205,15 @@ if(yes_no=="no"):
         Aus_in_tra={}
         Aus_in_tes={}
         tra_loss,tra_acc,Aus_in_tra = train(epoch)
-        tes_loss,tes_acc,Aus_in_tes = test(epoch)
+        tes_loss,tes_acc,Aus_in_tes = val(epoch)
         loss_dict.update({'train_loss': tra_loss})
-        loss_dict.update({'test_loss': tes_loss})
+        loss_dict.update({'val_loss': tes_loss})
         acc_dict.update({'train_acc': tra_acc})
-        acc_dict.update({'test_acc': tes_acc})
+        acc_dict.update({'val_acc': tes_acc})
         writer1.add_scalars('loss', loss_dict, global_step=epoch)
         writer1.add_scalars('acc', acc_dict, global_step=epoch)
         writer1.add_scalars('Aus_in_train', Aus_in_tra, global_step=epoch)
-        writer1.add_scalars('Aus_in_test', Aus_in_tes, global_step=epoch)
+        writer1.add_scalars('Aus_in_val', Aus_in_tes, global_step=epoch)
         checkpoint = {
             'epoch': epoch,
             'model_state_dict': net.state_dict(),
@@ -270,15 +235,15 @@ if(yes_no=="yes"):
         Aus_in_tra = {}
         Aus_in_tes = {}
         tra_loss, tra_acc, Aus_in_tra = train(epoch)
-        tes_loss, tes_acc, Aus_in_tes = test(epoch)
+        tes_loss, tes_acc, Aus_in_tes = val(epoch)
         loss_dict.update({'train_loss': tra_loss})
-        loss_dict.update({'test_loss': tes_loss})
+        loss_dict.update({'val_loss': tes_loss})
         acc_dict.update({'train_acc': tra_acc})
-        acc_dict.update({'test_acc': tes_acc})
+        acc_dict.update({'val_acc': tes_acc})
         writer1.add_scalars('loss', loss_dict, global_step=epoch)
         writer1.add_scalars('acc', acc_dict, global_step=epoch)
         writer1.add_scalars('Aus_in_train', Aus_in_tra, global_step=epoch)
-        writer1.add_scalars('Aus_in_test', Aus_in_tes, global_step=epoch)
+        writer1.add_scalars('Aus_in_val', Aus_in_tes, global_step=epoch)
         checkpoint = {
             'epoch': epoch,
             'model_state_dict': net.state_dict(),
