@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
+from vit_pytorch import ViT
 
 #resnet34 stem network
 class ResidualBlock(nn.Module):
@@ -111,10 +112,6 @@ class Transformer(ResNet34):
         # for i in range(num_classes):
         #     self.transformer = TransformerModel(ninp=512, nhead=4, nhid=512, nlayers=2, dropout=0.5).to('cuda:1')
         #     self.transformer_list.append(self.transformer)
-        self.lstm_list = []
-        for i in range(num_classes):
-            self.lstm = nn.LSTM(512, 49, 1, dropout=0.2).to('cuda:1')
-            self.lstm_list.append(self.lstm)
         #只用一个
         self.transformer = TransformerModel(num=num_classes,ninp=512, nhead=4, nhid=512, nlayers=2, dropout=0.5).to('cuda:1')
 
@@ -140,11 +137,6 @@ class Transformer(ResNet34):
         #     out[:,i]=torch.add(out[:,i],output)
         # 一个Encoder
         res = self.transformer(input)
-        # out = torch.zeros([input.shape[1], 12]).to('cuda:1')  # LSTM
-        # for i in range(12):
-        #     output, (hn, cn) = self.lstm_list[i](res)
-        #     hn = hn.mean(2)  # 128x1
-        #     out[:, i] = torch.add(out[:, i], hn)
         return res  # 1x1，将结果化为(0~1)之间 最后得输出肯定是128x12
 
 #Encoder
@@ -191,4 +183,17 @@ class TransformerModel(nn.Module):
         output = output.reshape([output.size(0),25088])  # 将输出拉伸为一行：1x512
         output = self.decoder(output)
         return output
+class vit(ResNet34):
+    def __init__(self, num_classes):
+        super(vit, self).__init__(num_classes)
+        self.Vtrans = ViT(image_size = 7,patch_size = 1,num_classes = 12,dim = 1024,channels = 512,depth = 6,heads = 16,mlp_dim = 2048,dropout = 0.1,emb_dropout = 0.1)
+
+    def forward(self, x):  # 224x224x3
+        x = self.pre(x)  # 56x56x64
+        x = self.layer1(x)  # 56x56x64
+        x = self.layer2(x)  # 28x28x128
+        x = self.layer3(x)  # 14x14x256
+        x = self.layer4(x)  # 7x7x512
+        res = self.Vtrans(x)
+        return res  # 1x1，将结果化为(0~1)之间 最后得输出肯定是128x12
 

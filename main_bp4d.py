@@ -2,7 +2,6 @@ from torch.utils.data import  DataLoader
 import torch.optim as optim
 from tqdm import tqdm
 from myNets import *
-import BP4D_load_data
 #from sklearn.metrics import f1_score
 from MyDatasets import *
 import torch.nn.functional as F
@@ -11,34 +10,6 @@ from torchvision import transforms
 import warnings
 import argparse
 from torch.utils.tensorboard import SummaryWriter
-
-warnings.filterwarnings("ignore")
-
-writer1=SummaryWriter('runs_20')
-
-parser=argparse.ArgumentParser('parameters',add_help=False)
-parser.add_argument('--lr',default=0.001,type=float)
-parser.add_argument('--batchsize',default=200,type=int)
-parser.add_argument('--device',default="cuda:1",type=str)
-parser.add_argument('--num_epoch',default=300,type=int)
-parser.add_argument('--num_workers',default=4,type=int)
-parser.add_argument('--N_fold',default=6,type=int,help="the ratio of train and validation data")
-parser.add_argument('--PATH_Checkpoint',default="./checkpoint/CHECKPOINT_FILE",type=str)
-parser.add_argument('--PATH_pretrain',default="./Resnet34model/model_state.pth",type=str)
-parser.add_argument('--PATH_dataset',default="./",type=str)
-parser.add_argument('--dataset',default="BP4D",type=str)
-parser.add_argument('--FirstTimeRunning',default=None,type=str,help="No means reading from the checkpoint_file")
-parser.add_argument('--model',default=None,type=str,help="choose from Resnet34、Lnet and Transformer")
-args = parser.parse_args()
-# ----------------------------------------------------------
-
-#parameters
-yes_no = args.FirstTimeRunning
-batchsize = args.batchsize
-train_lr = args.lr
-start_epoch = 0  # start from epoch 0 or last checkpoint epoch
-num_epoch = args.num_epoch
-au_keys = ['au1', 'au2', 'au4', 'au6', 'au7', 'au10', 'au12', 'au14', 'au15', 'au17', 'au23', 'au24']
 
 # weight
 def weighted(dataloader):
@@ -147,58 +118,7 @@ def val(epoch):
     print(val_acc)
     return val_loss, val_acc,Aus_dict
 
-# -------------------------------------------------------------------------------
-sequences, _ = BP4D_load_data.get_sequences_task()   # sequences, _文件名
-train_seq, val_seq = get_train_val(sequences)   #MyDatasets.get_train_val()
-
-if torch.cuda.is_available():
-    deviceidx = [0, 1]
-    device= args.device
-else:
-    device='cpu'
-
-print('==> Preparing data...')
-transform_train = transforms.Compose([      #图片预处理  模型pretrained
-    transforms.RandomCrop(224),
-    transforms.RandomHorizontalFlip(),
-    transforms.ToTensor(),
-    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-])
-transform_val = transforms.Compose([
-    transforms.CenterCrop(224),
-    transforms.ToTensor(),
-    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-])
-trainset = MyBP4D(train_seq, train=True, transform=transform_train)
-trainloader = DataLoader(trainset, batch_size=batchsize, shuffle=True, num_workers=args.num_workers)
-
-valset = MyBP4D(val_seq, train=False, transform=transform_val)
-valloader = DataLoader(valset, batch_size=batchsize, shuffle=True, num_workers=args.num_workers)
-
-#Model
-print("start the net")
-Nets = {"Resnet34":ResNet34(12),"Lnet":Lnet(12),"Transformer":Transformer(12)}
-net = Nets[args.model]
-# if torch.cuda.device_count() > 1:  # 查看当前电脑的可用的gpu的数量，若gpu数量>1,就多gpu训练
-#     net = torch.nn.DataParallel(net,deviceidx)    #多gpu训练,自动选择gpu
-net.to(device)
-
-
-
-optimizer = optim.SGD(net.parameters(), lr=train_lr, momentum=0.9, weight_decay=5e-4)
-print('the learning rate is ', train_lr)
-
-
-#断点重传
-if(yes_no=="no"):
-    print('-----------------------------')
-    path_checkpoint =args.PATH_Checkpoint
-    checkpoint = torch.load(path_checkpoint)
-    net.load_state_dict(checkpoint['model_state_dict'])
-    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-    start_epoch = checkpoint['epoch']
-    print("start_epoch:", start_epoch)
-    print('-----------------------------')
+def main():
     for epoch in range(start_epoch + 1, num_epoch):
         loss_dict = {}
         acc_dict = {}
@@ -220,37 +140,96 @@ if(yes_no=="no"):
             'optimizer_state_dict': optimizer.state_dict(),
         }
         torch.save(checkpoint, args.PATH_Checkpoint)
-if(yes_no=="yes"):
-    path_pretrain = args.PATH_pretrain
-    pretrained = torch.load(path_pretrain)
-    model_dict = net.state_dict()
-    # 1. filter out unnecessary keys
-    pretrained = {k: v for k, v in pretrained.items() if k in model_dict}
-    # 2. overwrite entries in the existing state dict
-    model_dict.update(pretrained)
-    net.load_state_dict(model_dict)
-    for epoch in range(start_epoch, start_epoch + num_epoch):
-        loss_dict = {}
-        acc_dict = {}
-        Aus_in_tra = {}
-        Aus_in_tes = {}
-        tra_loss, tra_acc, Aus_in_tra = train(epoch)
-        tes_loss, tes_acc, Aus_in_tes = val(epoch)
-        loss_dict.update({'train_loss': tra_loss})
-        loss_dict.update({'val_loss': tes_loss})
-        acc_dict.update({'train_acc': tra_acc})
-        acc_dict.update({'val_acc': tes_acc})
-        writer1.add_scalars('loss', loss_dict, global_step=epoch)
-        writer1.add_scalars('acc', acc_dict, global_step=epoch)
-        writer1.add_scalars('Aus_in_train', Aus_in_tra, global_step=epoch)
-        writer1.add_scalars('Aus_in_val', Aus_in_tes, global_step=epoch)
-        checkpoint = {
-            'epoch': epoch,
-            'model_state_dict': net.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-        }
+def data_augmentation():
+    print('==> Preparing data...')
+    sequences, _ = BP4D_load_data.get_sequences_task()   # sequences, _ filenames
+    train_seq, val_seq = get_train_val(sequences)   #MyDatasets.get_train_val()
+    transform_train = transforms.Compose([
+        transforms.RandomCrop(224),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+    ])
+    transform_val = transforms.Compose([
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+    ])
+    trainset = MyBP4D(train_seq, train=True, transform=transform_train)
+    trainloader = DataLoader(trainset, batch_size=batchsize, shuffle=True, num_workers=args.num_workers)
 
-        torch.save(checkpoint, args.PATH_Checkpoint)
+    valset = MyBP4D(val_seq, train=False, transform=transform_val)
+    valloader = DataLoader(valset, batch_size=batchsize, shuffle=True, num_workers=args.num_workers)
+    return trainloader,valloader
+# ---------------------------------------------------------------------------------
+if __name__=="__main__":
+    #defaults
+    warnings.filterwarnings("ignore")
+    writer1 = SummaryWriter('runs_20')
+    parser = argparse.ArgumentParser('parameters', add_help=False)
+    parser.add_argument('--lr', default=0.001, type=float)
+    parser.add_argument('--batchsize', default=100, type=int)
+    parser.add_argument('--device', default="cuda:1", type=str)
+    parser.add_argument('--num_epoch', default=300, type=int)
+    parser.add_argument('--num_workers', default=4, type=int)
+    parser.add_argument('--N_fold', default=6, type=int, help="the ratio of train and validation data")
+    parser.add_argument('--PATH_Checkpoint', default="./checkpoint/CHECKPOINT_FILE", type=str)
+    parser.add_argument('--PATH_pretrain', default="./Resnet34model/model_state.pth", type=str)
+    parser.add_argument('--PATH_dataset', default="./", type=str)
+    parser.add_argument('--dataset', default="BP4D", type=str)
+    parser.add_argument('--FirstTimeRunning', default=None, type=str, help="No means reading from the checkpoint_file")
+    parser.add_argument('--model', default=None, type=str, help="choose from Resnet34、Lnet、Transformer and vit")
+    args = parser.parse_args()
+
+    # parameters
+    yes_no = args.FirstTimeRunning
+    batchsize = args.batchsize
+    train_lr = args.lr
+    start_epoch = -1  # start from epoch 0 or last checkpoint epoch
+    num_epoch = args.num_epoch
+    au_keys = ['au1', 'au2', 'au4', 'au6', 'au7', 'au10', 'au12', 'au14', 'au15', 'au17', 'au23', 'au24']
+
+    #Datalaoder
+    trainloader,valloader=data_augmentation()
+
+    #check CUDA
+    if torch.cuda.is_available():
+        deviceidx = [0, 1]
+        device= args.device
+    else:
+        device='cpu'
+
+    #Models
+    print("start the net")
+    Nets = {"Resnet34":ResNet34(12),"Lnet":Lnet(12),"Transformer":Transformer(12),"vit":vit(12)}
+    net = Nets[args.model]
+    # if torch.cuda.device_count() > 1:  # 查看当前电脑的可用的gpu的数量，若gpu数量>1,就多gpu训练
+    #     net = torch.nn.DataParallel(net,deviceidx)    #多gpu训练,自动选择gpu
+    net.to(device)
+
+    #optimizer
+    optimizer = optim.SGD(net.parameters(), lr=train_lr, momentum=0.9, weight_decay=5e-4)
+    print('the learning rate is ', train_lr)
+
+    #断点重传
+    if(yes_no=="no"):
+        print('-----------------------------')
+        path_checkpoint =args.PATH_Checkpoint
+        checkpoint = torch.load(path_checkpoint)
+        net.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        start_epoch = checkpoint['epoch']
+        print("start_epoch:", start_epoch)
+        print('-----------------------------')
+        main()
+    if(yes_no=="yes"):
+        path_pretrain = args.PATH_pretrain
+        pretrained = torch.load(path_pretrain)
+        model_dict = net.state_dict()
+        pretrained = {k: v for k, v in pretrained.items() if k in model_dict}
+        model_dict.update(pretrained)
+        net.load_state_dict(model_dict)
+        main()
 
 
 
