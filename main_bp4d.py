@@ -11,6 +11,24 @@ import warnings
 import argparse
 from torch.utils.tensorboard import SummaryWriter
 
+#args and settings
+warnings.filterwarnings("ignore")
+writer1 = SummaryWriter('runs_20')
+parser = argparse.ArgumentParser('parameters', add_help=False)
+parser.add_argument('--lr', default=0.001, type=float)
+parser.add_argument('--batchsize', default=128, type=int)
+parser.add_argument('--device', default="cuda:1", type=str)
+parser.add_argument('--num_epoch', default=300, type=int)
+parser.add_argument('--num_workers', default=4, type=int)
+parser.add_argument('--N_fold', default=6, type=int, help="the ratio of train and validation data")
+parser.add_argument('--PATH_Checkpoint', default="./checkpoint/CHECKPOINT_FILE", type=str)
+parser.add_argument('--PATH_pretrain', default="./Resnet34model/model_state.pth", type=str)
+parser.add_argument('--PATH_dataset', default="./", type=str)
+parser.add_argument('--dataset', default="BP4D", type=str)
+parser.add_argument('--FirstTimeRunning', default=None, type=str, help="No means reading from the checkpoint_file")
+parser.add_argument('--model', default=None, type=str, help="choose from Resnet34、Lnet、Transformer and vit")
+args = parser.parse_args()
+
 # weight
 def weighted(dataloader):
     total_in_epoch = [0 for i in range(len(au_keys))]
@@ -81,6 +99,7 @@ def train(epoch):
         outputs = net(inputs)
         # functional.BCE_with_logits自范带对预测分数进行sigmoid操作，因此可以无所谓outputs的取值围
         loss = F.binary_cross_entropy_with_logits(outputs, targets, reduction='mean',pos_weight=weight).to(device)
+        # flood = (loss - 0.6).abs() + 0.6
         loss.backward()    #loss flooding?
         optimizer.step()
         train_loss += loss.item()
@@ -107,7 +126,7 @@ def val(epoch):
         optimizer.zero_grad()
         outputs = net(inputs)
         loss = F.binary_cross_entropy_with_logits(outputs, targets, reduction='mean',pos_weight=weight).to(device)
-        val_loss += loss.item()
+        val_loss=val_loss+loss.item()
         val_acc_in_allset = calculate_Acc(outputs, targets, acc_sum_allset, total_sum_allset, acc_in_allset, au_keys)
     Aus_dict = {}
     for i in range(len(au_keys)):
@@ -122,8 +141,6 @@ def main():
     for epoch in range(start_epoch + 1, num_epoch):
         loss_dict = {}
         acc_dict = {}
-        Aus_in_tra={}
-        Aus_in_tes={}
         tra_loss,tra_acc,Aus_in_tra = train(epoch)
         tes_loss,tes_acc,Aus_in_tes = val(epoch)
         loss_dict.update({'train_loss': tra_loss})
@@ -163,24 +180,6 @@ def data_augmentation():
     return trainloader,valloader
 # ---------------------------------------------------------------------------------
 if __name__=="__main__":
-    #defaults
-    warnings.filterwarnings("ignore")
-    writer1 = SummaryWriter('runs_20')
-    parser = argparse.ArgumentParser('parameters', add_help=False)
-    parser.add_argument('--lr', default=0.001, type=float)
-    parser.add_argument('--batchsize', default=100, type=int)
-    parser.add_argument('--device', default="cuda:1", type=str)
-    parser.add_argument('--num_epoch', default=300, type=int)
-    parser.add_argument('--num_workers', default=4, type=int)
-    parser.add_argument('--N_fold', default=6, type=int, help="the ratio of train and validation data")
-    parser.add_argument('--PATH_Checkpoint', default="./checkpoint/CHECKPOINT_FILE", type=str)
-    parser.add_argument('--PATH_pretrain', default="./Resnet34model/model_state.pth", type=str)
-    parser.add_argument('--PATH_dataset', default="./", type=str)
-    parser.add_argument('--dataset', default="BP4D", type=str)
-    parser.add_argument('--FirstTimeRunning', default=None, type=str, help="No means reading from the checkpoint_file")
-    parser.add_argument('--model', default=None, type=str, help="choose from Resnet34、Lnet、Transformer and vit")
-    args = parser.parse_args()
-
     # parameters
     yes_no = args.FirstTimeRunning
     batchsize = args.batchsize
@@ -201,7 +200,7 @@ if __name__=="__main__":
 
     #Models
     print("start the net")
-    Nets = {"Resnet34":ResNet34(12),"Lnet":Lnet(12),"Transformer":Transformer(12),"vit":vit(12)}
+    Nets = {"Resnet34":ResNet34(12),"Lnet":Lnet(12),"Transformer":Transformer(12),"vit":vit(12),"Resvit":Resvit(12)}
     net = Nets[args.model]
     # if torch.cuda.device_count() > 1:  # 查看当前电脑的可用的gpu的数量，若gpu数量>1,就多gpu训练
     #     net = torch.nn.DataParallel(net,deviceidx)    #多gpu训练,自动选择gpu

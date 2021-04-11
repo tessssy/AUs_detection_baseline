@@ -166,27 +166,45 @@ class TransformerModel(nn.Module):
         encoder_layers = TransformerEncoderLayer(ninp, nhead, nhid, dropout)
         self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
         self.ninp = ninp
-        self.decoder = nn.Linear(25088, num)
-        self.init_weights()
-
-    def init_weights(self):
-        initrange = 0.1
-        self.decoder.bias.data.zero_()
-        self.decoder.weight.data.uniform_(-initrange, initrange)
+        # self.decoder = nn.Linear(25088, num)
+        self.decoder = nn.Sequential(
+            nn.Linear(25088,2048),
+            nn.GELU(),
+            nn.Dropout(0.2),
+            nn.Linear(2048,4096),
+            nn.Dropout(0.2),
+            nn.LayerNorm(4096),
+            nn.Linear(4096,12)
+        )
 
     def forward(self, src):
         src = self.pos_encoder(src)
         output = self.transformer_encoder(src) #49xbsx512
-        output = output.transpose(0,1)
+        output = output.transpose(0,1)  #bsx512
         # output = output.mean(1)
         # output = output.transpose(1,2)
         output = output.reshape([output.size(0),25088])  # 将输出拉伸为一行：1x512
         output = self.decoder(output)
         return output
-class vit(ResNet34):
+
+
+
+class Resvit(ResNet34):
     def __init__(self, num_classes):
-        super(vit, self).__init__(num_classes)
-        self.Vtrans = ViT(image_size = 7,patch_size = 1,num_classes = 12,dim = 1024,channels = 512,depth = 6,heads = 16,mlp_dim = 2048,dropout = 0.1,emb_dropout = 0.1)
+        super(Resvit, self).__init__(num_classes)
+        self.Vtrans = ViT(
+    image_size = 7,
+    patch_size = 1,
+    num_classes = 12,
+    dim = 1024,
+    depth = 8,
+    heads = 16,
+    mlp_dim = 2048,
+    dropout = 0.1,
+    emb_dropout = 0.1,
+    channels = 512
+    )
+
 
     def forward(self, x):  # 224x224x3
         x = self.pre(x)  # 56x56x64
@@ -194,6 +212,28 @@ class vit(ResNet34):
         x = self.layer2(x)  # 28x28x128
         x = self.layer3(x)  # 14x14x256
         x = self.layer4(x)  # 7x7x512
+        res = self.Vtrans(x)
+        return res  # 1x1，将结果化为(0~1)之间 最后得输出肯定是128x12
+
+
+class vit(nn.Module):
+    def __init__(self, num_classes):
+        super(vit, self).__init__()
+        self.Vtrans = ViT(
+    image_size = 224,
+    patch_size = 32,
+    num_classes = 12,
+    dim = 1024,
+    depth = 8,
+    heads = 16,
+    mlp_dim = 2048,
+    dropout = 0.1,
+    emb_dropout = 0.1,
+    channels = 3
+    )
+
+
+    def forward(self, x):  # 224x224x3
         res = self.Vtrans(x)
         return res  # 1x1，将结果化为(0~1)之间 最后得输出肯定是128x12
 
